@@ -23,7 +23,34 @@ nvidia-smi
 nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv
 ```
 
-Install NVIDIA CUDA Toolkit if building from source (or if drivers alone are insufficient). Follow the official NVIDIA Ubuntu 24.04 instructions for the latest compatible toolkit (12.x or 13.x series matching your driver). After install, add to PATH if needed (`export PATH=/usr/local/cuda/bin:$PATH` and `LD_LIBRARY_PATH`).
+**Install NVIDIA CUDA Toolkit (only if needed — required for source build or if drivers alone are insufficient).**
+First check whether a working toolkit is already present; if `nvcc` reports a recent version, you can skip this.
+```bash
+# Check for an existing CUDA toolkit (skip the install below if this prints a version)
+nvcc --version 2>/dev/null || echo "CUDA toolkit not found — install it below"
+```
+
+If not present, install from NVIDIA's official Ubuntu 24.04 network repository (recommended — always pulls the latest compatible toolkit):
+```bash
+# 1. Add NVIDIA's CUDA repo keyring for Ubuntu 24.04 x86_64
+cd ~
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+
+# 2. Refresh package lists and install the toolkit
+sudo apt update
+sudo apt install -y cuda-toolkit
+# (To pin a specific series matching your driver, use e.g. cuda-toolkit-12-8 instead.)
+
+# 3. Add CUDA to your environment (append to ~/.bashrc to make it permanent)
+export PATH=/usr/local/cuda/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+# 4. Verify
+nvcc --version
+```
+
+Match the toolkit (12.x or 13.x series) to your installed driver — `nvidia-smi` shows the maximum CUDA version the driver supports. See the official guide: https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=24.04
 
 For a hard ~7 GB VRAM ceiling on a laptop: monitor with `watch -n1 nvidia-smi` during runs, use `-ngl` (layers) to leave headroom, enable flash attention, and start with lower context. KV-cache quantization or unified memory can help further if needed.
 
@@ -139,6 +166,49 @@ Then:
 (Docker alternative is also well-documented on the Open WebUI site if you prefer containers.)
 
 This combination (llama-server + Open WebUI) is the current best-practice quick test stack for local GGUF models.
+
+### 7. Configure OpenCode to Use the Local Model
+[OpenCode](https://opencode.ai) is a terminal-based AI coding agent. It can talk to any OpenAI-compatible endpoint, so point it at the running `llama-server` (`http://127.0.0.1:8080/v1`). Keep the server from §5 running.
+
+```bash
+# Install OpenCode (any one of these)
+curl -fsSL https://opencode.ai/install | bash
+# or: npm install -g opencode-ai
+# or: brew install sst/tap/opencode
+```
+
+Add a custom local provider. Use `~/.config/opencode/opencode.json` for a global config, or an `opencode.json` in your project root for a per-project one:
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "llamacpp": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "llama.cpp (local)",
+      "options": {
+        "baseURL": "http://127.0.0.1:8080/v1",
+        "apiKey": "sk-no-key-required"
+      },
+      "models": {
+        "Qwen3.5-9B-UD-Q4_K_XL": {
+          "name": "Qwen3.5-9B (local)"
+        }
+      }
+    }
+  }
+}
+```
+
+The model key must match what `llama-server` reports at `http://127.0.0.1:8080/v1/models` (by default the GGUF filename without extension). Then:
+```bash
+opencode        # launch the TUI
+# Use /models (or the model picker) and select "llama.cpp (local) → Qwen3.5-9B (local)"
+```
+
+Notes:
+- `llama-server` ignores the API key, but OpenCode expects the field present — any non-empty string works.
+- For agentic/tool-use workflows, start the server with a bigger context (`-c 16384`) since coding prompts consume tokens quickly; watch VRAM per §5.
+- The `npm` package (`@ai-sdk/openai-compatible`) is fetched automatically by OpenCode on first use.
 
 ### Next Steps / Troubleshooting
 - After first successful 8K run, experiment with 12K → 16K while watching VRAM.
