@@ -15,7 +15,7 @@
 sudo apt update && sudo apt upgrade -y
 
 # Essential packages
-sudo apt install -y git build-essential cmake curl libcurl4-openssl-dev pciutils wget
+sudo apt install -y git build-essential cmake curl libcurl4-openssl-dev pciutils wget libssl-dev pkg-config
 
 # Verify GPU
 nvidia-smi
@@ -81,10 +81,12 @@ cd llama.cpp
 
 # CUDA build targeting your architecture (8.9) for faster compile + good performance
 # Use native detection if preferred, or explicit architectures
-cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="89" -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="89" -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release
 # Optional: -DGGML_NATIVE=OFF for broader compatibility; add -DLLAMA_CURL=ON if desired
+# -DCMAKE_CUDA_ARCHITECTURES=120 if you have a blackwell architecture
 
-cmake --build build --config Release -j$(nproc)
+cmake --build build --config Release -j$(nproc) --target llama-cli llama-mtmd-cli llama-server llama-gguf-split
+# Optional:  Use --clean-first only after changing CMake options (CUDA, OpenSSL, static vs shared) or after a broken compile. Do not use it on every rebuild.
 
 # Binaries land in build/bin/
 ls build/bin/llama-*
